@@ -465,7 +465,7 @@ Free Open Source
 
 <div align="center">
 
-**Made with ❤️ and C++**
+**Made with Hate BY suadat**
 
 ⭐ **Star this repo if you found it helpful!** ⭐
 
