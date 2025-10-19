@@ -9,228 +9,162 @@
 //github https://github.com/suadatbiniqbal
 
 #include <iostream>
-#include <thread>
-#include <vector>
-#include <mutex>
 #include <string>
+#include <vector>
+#include <thread>
+#include <mutex>
 #include <algorithm>
+#include <cstring>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <cstring>
-#include <signal.h>
 
-class ChatServer {
-private:
-    int server_socket;
-    int port;
-    std::vector<int> client_sockets;
-    std::mutex clients_mutex;
-    bool running;
+#define PORT 5555
+#define MAX_CLIENTS 10
+#define BUFFER_SIZE 1024
 
-public:
-    ChatServer(int port = 12345) : port(port), running(false) {
-        // Ignore SIGPIPE to prevent crashes when clients disconnect
-        signal(SIGPIPE, SIG_IGN);
-    }
-
-    ~ChatServer() {
-        stop();
-    }
-
-    bool start() {
-        // Create socket
-        server_socket = socket(AF_INET, SOCK_STREAM, 0);
-        if (server_socket < 0) {
-            std::cerr << "Error creating socket" << std::endl;
-            return false;
-        }
-
-        // Set socket options to reuse address
-        int opt = 1;
-        if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-            std::cerr << "Error setting socket options" << std::endl;
-            close(server_socket);
-            return false;
-        }
-
-        // Setup server address
-        struct sockaddr_in server_addr;
-        server_addr.sin_family = AF_INET;
-        server_addr.sin_addr.s_addr = INADDR_ANY;
-        server_addr.sin_port = htons(port);
-
-        // Bind socket
-        if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-            std::cerr << "Error binding socket to port " << port << std::endl;
-            close(server_socket);
-            return false;
-        }
-
-        // Listen for connections
-        if (listen(server_socket, 10) < 0) {
-            std::cerr << "Error listening on socket" << std::endl;
-            close(server_socket);
-            return false;
-        }
-
-        running = true;
-        std::cout << "=== TCP World Chat Server ===" << std::endl;
-        std::cout << "Server started on port " << port << std::endl;
-        std::cout << "Waiting for clients to connect..." << std::endl;
-        std::cout << "Press Ctrl+C to stop the server" << std::endl;
-        std::cout << "=============================" << std::endl;
-
-        return true;
-    }
-
-    void run() {
-        if (!running) return;
-
-        struct sockaddr_in client_addr;
-        socklen_t client_len = sizeof(client_addr);
-
-        while (running) {
-            // Accept new client connection
-            int client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &client_len);
-
-            if (client_socket < 0) {
-                if (running) {
-                    std::cerr << "Error accepting client connection" << std::endl;
-                }
-                continue;
-            }
-
-            // Get client IP address
-            char client_ip[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
-
-            // Add client to list
-            {
-                std::lock_guard<std::mutex> lock(clients_mutex);
-                client_sockets.push_back(client_socket);
-            }
-
-            std::cout << "[SERVER] New client connected from " << client_ip 
-                     << " (Total clients: " << client_sockets.size() << ")" << std::endl;
-
-            // Create thread to handle this client
-            std::thread client_thread(&ChatServer::handle_client, this, client_socket, std::string(client_ip));
-            client_thread.detach();
-        }
-    }
-
-    void handle_client(int client_socket, std::string client_ip) {
-        char buffer[1024];
-
-        while (running) {
-            // Receive message from client
-            int bytes_received = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
-
-            if (bytes_received <= 0) {
-                // Client disconnected
-                break;
-            }
-
-            buffer[bytes_received] = '\0';
-            std::string message(buffer);
-
-            // Remove newline if present
-            if (!message.empty() && message.back() == '\n') {
-                message.pop_back();
-            }
-
-            if (!message.empty()) {
-                // Print message on server
-                std::cout << "[" << client_ip << "] " << message << std::endl;
-
-                // Broadcast message to all clients
-                broadcast_message("[" + client_ip + "] " + message, client_socket);
-            }
-        }
-
-        // Remove client from list and close socket
-        remove_client(client_socket);
-        std::cout << "[SERVER] Client " << client_ip << " disconnected (Total clients: " 
-                 << client_sockets.size() << ")" << std::endl;
-    }
-
-    void broadcast_message(const std::string& message, int sender_socket) {
-        std::lock_guard<std::mutex> lock(clients_mutex);
-
-        std::string full_message = message + "\n";
-
-        // Send to all clients except the sender
-        for (auto it = client_sockets.begin(); it != client_sockets.end();) {
-            if (*it != sender_socket) {
-                int sent = send(*it, full_message.c_str(), full_message.length(), 0);
-                if (sent < 0) {
-                    // Client disconnected, remove from list
-                    close(*it);
-                    it = client_sockets.erase(it);
-                    continue;
-                }
-            }
-            ++it;
-        }
-    }
-
-    void remove_client(int client_socket) {
-        std::lock_guard<std::mutex> lock(clients_mutex);
-
-        auto it = std::find(client_sockets.begin(), client_sockets.end(), client_socket);
-        if (it != client_sockets.end()) {
-            close(*it);
-            client_sockets.erase(it);
-        }
-    }
-
-    void stop() {
-        if (!running) return;
-
-        running = false;
-
-        // Close all client sockets
-        {
-            std::lock_guard<std::mutex> lock(clients_mutex);
-            for (int socket : client_sockets) {
-                close(socket);
-            }
-            client_sockets.clear();
-        }
-
-        // Close server socket
-        if (server_socket >= 0) {
-            close(server_socket);
-        }
-
-        std::cout << "\n[SERVER] Server stopped." << std::endl;
-    }
+struct Client {
+    int socket;
+    std::string username;
+    std::thread thread;
 };
 
-// Signal handler for graceful shutdown
-ChatServer* global_server = nullptr;
+std::vector<Client*> clients;
+std::mutex clients_mutex;
 
-void signal_handler(int signal) {
-    if (global_server) {
-        global_server->stop();
+void broadcast_message(const std::string& message, int sender_socket) {
+    std::lock_guard<std::mutex> lock(clients_mutex);
+    for (auto client : clients) {
+        if (client->socket != sender_socket) {
+            send(client->socket, message.c_str(), message.length(), 0);
+        }
     }
-    exit(0);
+}
+
+void remove_client(int socket) {
+    std::lock_guard<std::mutex> lock(clients_mutex);
+    auto it = std::find_if(clients.begin(), clients.end(),
+        [socket](Client* c) { return c->socket == socket; });
+    
+    if (it != clients.end()) {
+        Client* client = *it;
+        std::string leave_msg = "[SERVER] " + client->username + " has left the chat.\n";
+        std::cout << client->username << " disconnected." << std::endl;
+        
+        clients.erase(it);
+        close(client->socket);
+        
+        // Broadcast after removing client
+        for (auto c : clients) {
+            send(c->socket, leave_msg.c_str(), leave_msg.length(), 0);
+        }
+        
+        delete client;
+    }
+}
+
+void handle_client(Client* client) {
+    char buffer[BUFFER_SIZE];
+    
+    // Request username
+    std::string username_prompt = "USERNAME";
+    send(client->socket, username_prompt.c_str(), username_prompt.length(), 0);
+    
+    // Receive username
+    memset(buffer, 0, BUFFER_SIZE);
+    int bytes_received = recv(client->socket, buffer, BUFFER_SIZE, 0);
+    
+    if (bytes_received <= 0) {
+        remove_client(client->socket);
+        return;
+    }
+    
+    client->username = std::string(buffer, bytes_received);
+    
+    // Welcome message to new user
+    std::string welcome = "[SERVER] Welcome " + client->username + "! You are now connected.\n";
+    send(client->socket, welcome.c_str(), welcome.length(), 0);
+    
+    // Notify all other clients
+    std::string join_msg = "[SERVER] " + client->username + " has joined the chat!\n";
+    std::cout << client->username << " connected." << std::endl;
+    broadcast_message(join_msg, client->socket);
+    
+    // Handle messages
+    while (true) {
+        memset(buffer, 0, BUFFER_SIZE);
+        bytes_received = recv(client->socket, buffer, BUFFER_SIZE, 0);
+        
+        if (bytes_received <= 0) {
+            break;
+        }
+        
+        std::string message = client->username + ": " + std::string(buffer, bytes_received);
+        std::cout << message;
+        broadcast_message(message, client->socket);
+    }
+    
+    remove_client(client->socket);
 }
 
 int main() {
-    // Setup signal handlers for graceful shutdown
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
-
-    ChatServer server(12345);
-    global_server = &server;
-
-    if (!server.start()) {
+    int server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    
+    if (server_socket == -1) {
+        std::cerr << "[ERROR] Could not create socket" << std::endl;
         return 1;
     }
-
-    server.run();
+    
+    // Allow socket reuse
+    int opt = 1;
+    setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(PORT);
+    
+    if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        std::cerr << "[ERROR] Bind failed" << std::endl;
+        close(server_socket);
+        return 1;
+    }
+    
+    if (listen(server_socket, MAX_CLIENTS) < 0) {
+        std::cerr << "[ERROR] Listen failed" << std::endl;
+        close(server_socket);
+        return 1;
+    }
+    
+    std::cout << "[SERVER] Server is listening on port " << PORT << std::endl;
+    std::cout << "[SERVER] Waiting for connections..." << std::endl;
+    
+    while (true) {
+        struct sockaddr_in client_addr;
+        socklen_t client_len = sizeof(client_addr);
+        
+        int client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &client_len);
+        
+        if (client_socket < 0) {
+            std::cerr << "[ERROR] Accept failed" << std::endl;
+            continue;
+        }
+        
+        Client* new_client = new Client();
+        new_client->socket = client_socket;
+        
+        {
+            std::lock_guard<std::mutex> lock(clients_mutex);
+            clients.push_back(new_client);
+        }
+        
+        new_client->thread = std::thread(handle_client, new_client);
+        new_client->thread.detach();
+        
+        std::cout << "[SERVER] Active connections: " << clients.size() << std::endl;
+    }
+    
+    close(server_socket);
     return 0;
 }
