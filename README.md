@@ -1,55 +1,90 @@
-TerminalTalk TCP Server
+# TerminalTalk TCP Server
 
-===============================
+TerminalTalk is a high-performance, multi-threaded TCP chat server and client application implemented in C++. It facilitates real-time communication between multiple users through a terminal-based interface.
 
-TerminalTalk TCP Server is a simple C++ based TCP chat server designed for real-time communication through the terminal. It allows multiple clients to connect simultaneously and exchange messages over a TCP connection.
+## Description
 
-===========================
+TerminalTalk TCP Server leverages POSIX sockets and C++ threads to manage multiple concurrent client connections. It provides a robust architecture for message broadcasting and client-server interaction, making it an ideal project for understanding network programming and concurrency in a Unix-like environment.
 
-Features
+## Key Features
 
-TCP server–client architecture
+- **Multi-threaded Architecture**: Handles multiple clients simultaneously using dedicated threads.
+- **Real-time Broadcasting**: Messages sent by one client are instantly distributed to all other connected participants.
+- **Enhanced Terminal Interface**: Utilizes ANSI color codes and stylized banners for an improved user experience.
+- **Connection Animations**: Includes terminal-based loading animations during initialization and connection phases.
+- **Username Identification**: Each participant is identified by a unique username.
+- **Lightweight and Efficient**: Minimal overhead, using standard C++ and system-level socket APIs.
 
+## Technical Specifications
 
-Supports multiple concurrent clients
+- **Language**: C++11 or higher
+- **Protocol**: TCP/IP
+- **API**: POSIX Sockets
+- **Threading**: C++ Standard Thread Library
+- **OS Support**: Linux, macOS, and other Unix-based systems
 
-Broadcasts messages to all connected clients
+## Installation and Build
 
-Username-based identification
+### Prerequisites
 
-Minimal and lightweight implementation
+Ensure you have the following installed on your system:
+- GNU Compiler Collection (g++)
+- Make build automation tool
 
-Uses standard C++ and POSIX sockets
+### Cloning the Repository
 
-Build
-
-Clone the repository and compile using the provided Makefile:
-
+```bash
 git clone https://github.com/suadatbiniqbal/TerminalTalk-TCP-Server.git
 cd TerminalTalk-TCP-Server
-make
+```
 
-Usage
+### Compiling the Project
 
-Start the server:
+The project includes a comprehensive Makefile for easy compilation.
 
+```bash
+make all
+```
+
+This will generate two executable files: `server` and `client`.
+
+## Usage
+
+### 1. Start the Server
+
+First, initiate the server to listen for incoming connections:
+
+```bash
 ./server
+```
 
+The server will start listening on port 5555 by default.
 
-In separate terminals, start clients:
+### 2. Connect Clients
 
+In separate terminal windows, start as many clients as needed:
+
+```bash
 ./client
+```
 
-Each client will be prompted for a username and can then send messages to all connected users.
+Upon starting, each client will:
+1. Display a startup banner.
+- Undergo a brief connection initialization animation.
+2. Prompt for a username.
+3. Establish a connection with the server.
 
-Requirements
+### 3. Communication
 
-Linux or Unix-based system
+Once connected, simply type your message and press Enter to broadcast it to all other users. To disconnect, type `/quit` or `/exit`.
 
-g++ (C++11 or newer)
+## Project Structure
 
-make
+- `server.cpp`: Implementation of the multi-threaded TCP server.
+- `client.cpp`: Implementation of the TCP client with an interactive interface.
+- `Makefile`: Build instructions for the project.
+- `README.md`: Project documentation.
 
-Overview
+## License
 
-The server listens on a TCP port, accepts incoming client connections, and handles message broadcasting using multithreading. The project is intended for learning networking, socket programming, and basic concurrent server design in C++.
+This project is open-source and available under the MIT License.
